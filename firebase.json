@@ -1,0 +1,21 @@
+{
+    "flutter": {
+        "platforms": {
+            "android": {
+                "default": {
+                    "projectId": "anyride-52c55",
+                    "appId": "1:906890849745:android:6f44e477839684dc9f84f0",
+                    "fileOutput": "android/app/google-services.json"
+                }
+            },
+            "dart": {
+                "lib/firebase_options.dart": {
+                    "projectId": "anyride-52c55",
+                    "configurations": {
+                        "android": "1:906890849745:android:6f44e477839684dc9f84f0"
+                    }
+                }
+            }
+        }
+    }
+}
