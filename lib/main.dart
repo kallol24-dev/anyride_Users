@@ -13,6 +13,7 @@ import 'business/auth_provider.dart';
 import 'business/driver_provider.dart';
 import 'routes/navigator.dart';
 import 'screens/login/otp_screen2.dart';
+import 'screens/profile/profile.dart';
 import 'services/auth_service.dart';
 import 'services/secure_storage_service.dart';
 import 'services/user_service.dart';
@@ -64,12 +65,15 @@ class MainApp extends ConsumerWidget {
           // home: initialRoute == "/welcome" ? WelcomeScreen() : LoginScreen2(),
           navigatorKey: navigatorKey,
           initialRoute: initialRoute,
+
+          //initialRoute: "/profile",
           routes: {
             "/login": (context) => LoginScreen2(),
             "/otp": (context) => OtpVerificationScreen(),
             // "/registration": (context) => DriverRegistrationScreen(),
-            "/home": (context) => HomeScreen(),
+            "/home": (context) => HomeScreen2(),
             "/welcome": (context) => WelcomeScreen(),
+            "/profile": (context) => ProfileScreen(),
           },
         );
       },

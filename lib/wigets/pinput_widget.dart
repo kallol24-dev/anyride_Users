@@ -1,4 +1,5 @@
 import 'package:anyride_captain/business/auth_provider.dart';
+import 'package:anyride_captain/business/userProvider.dart';
 import 'package:anyride_captain/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -167,12 +168,15 @@ class _RoundedWithShadowState extends ConsumerState<RoundedWithShadow> {
             .read(authServiceProvider)
             .verifyOTP(verificationId!, input);
 
-        var driver = ref.watch(driverNotifierProvider);
+        var user = ref.watch(userNotifierProvider);
 
-        var isLoginVerified = await _registrationservice.verifyLogin(
-          ref,
-          driver,
-        );
+        String? userid = await ref.read(authServiceProvider).getUserId();
+
+        if (userid != null) {
+          ref.read(userNotifierProvider.notifier).updateUserId(userid);
+        }
+
+        var isLoginVerified = await _registrationservice.verifyLogin(ref, user);
 
         if (!mounted) return; // <-- Important: check if widget is still in tree
 

@@ -9,3 +9,5 @@ final otpSentProvider = StateProvider<bool>((ref) => false);
 final isLoggedinUser = StateProvider<bool>((ref) => false);
 final isLoggedOutUser = StateProvider<bool>((ref) => false);
 final isResentOtpLoading = StateProvider<bool>((ref) => false);
+
+

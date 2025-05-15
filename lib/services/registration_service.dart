@@ -1,4 +1,5 @@
 import 'package:anyride_captain/business/driver_provider.dart';
+import 'package:anyride_captain/models/user.dart';
 import 'package:anyride_captain/services/auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,7 +44,7 @@ class RegistrationService {
     return result.data?["CreateUser"] as Map<String, dynamic>?;
   }
 
-  Future<bool> verifyLogin(WidgetRef ref, Driver driver) async {
+  Future<bool> verifyLogin(WidgetRef ref, User user) async {
     AuthService authService = AuthService();
     SecureStorage secureStorage = SecureStorage();
     final client = await getGraphQLClient();

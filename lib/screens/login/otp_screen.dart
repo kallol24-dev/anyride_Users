@@ -1,3 +1,4 @@
+import 'package:anyride_captain/business/userProvider.dart';
 import 'package:anyride_captain/common/colorPalette.dart';
 import 'package:anyride_captain/screens/home/home.dart';
 import 'package:flutter/material.dart';
@@ -151,12 +152,12 @@ class OtpScreen extends ConsumerWidget {
                                         //     .firebaseVerificationOnVerifyOTP(
                                         //       ref,
                                         //     );
-                                        var driver = ref.watch(
-                                          driverNotifierProvider,
+                                        var user = ref.watch(
+                                          userNotifierProvider,
                                         );
                                         var isLoginVerified =
                                             await _registrationservice
-                                                .verifyLogin(ref, driver);
+                                                .verifyLogin(ref, user);
 
                                         // var isRegisteredUser =
                                         //     await ref

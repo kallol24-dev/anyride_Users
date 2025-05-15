@@ -1,343 +1,426 @@
-// import 'package:flutter/material.dart';
-// import 'package:google_maps_flutter/google_maps_flutter.dart';
-// import 'package:geolocator/geolocator.dart';
-// import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-// import '../../common/colorPalette.dart';
-// import '../../common/Alert_box.dart';
+import 'dart:async';
 
-// class Home extends StatefulWidget {
-//   const Home({super.key});
+import 'package:anyride_captain/business/userProvider.dart';
+import 'package:anyride_captain/models/coordinates.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 
-//   @override
-//   State<Home> createState() => _HomeState();
-// }
+import '../../business/driver_provider.dart';
+import '../../business/locationState.dart';
+import '../../services/place_service.dart';
+import '../../socket/socket.dart';
+import '../drivers/search_drivers.dart';
 
-// class _HomeState extends State<Home> {
-//   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-//   late GoogleMapController _mapController;
+class HomeScreen2 extends ConsumerStatefulWidget {
+  const HomeScreen2({Key? key}) : super(key: key);
 
-//   LatLng _initialCameraPosition = const LatLng(25.5679185, 91.8806332);
-//   final Set<Marker> _markers = {};
-//   final Set<Circle> _circles = {};
-//   final LatLng _driverHub = LatLng(25.5767116, 91.8816341); //center
-//   bool _isOnline = false;
-//   LatLng? currentLatLng;
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
 
-//   final List<Map<String, dynamic>> _staticUsers = [
-//     {
-//       'id': 'user1',
-//       'name': 'Alice',
-//       'lat': 25.567,
-//       'lng': 91.880,
-//       'color': BitmapDescriptor.hueBlue,
-//     },
-//     {
-//       'id': 'user2',
-//       'name': 'Bob',
-//       'lat': 25.568,
-//       'lng': 91.881,
-//       'color': BitmapDescriptor.hueBlue,
-//     },
-//     {
-//       'id': 'user3',
-//       'name': 'Charlie',
-//       'lat': 25.5665,
-//       'lng': 91.879,
-//       'color': BitmapDescriptor.hueBlue,
-//     },
-//   ];
+class _HomeScreenState extends ConsumerState<HomeScreen2> {
+  LatLng? _initialCameraPosition;
+  late GoogleMapController _mapController;
+  String? _mapStyle;
+  final Set<Marker> _markers = {};
+  LatLng? currentLatLng;
+  SocketService socketService = SocketService();
 
-//   void _onMapCreated(GoogleMapController controller) {
-//     _mapController = controller;
-//   }
+  StreamSubscription<Position>? positionStream;
 
-//   @override
-//   void initState() {
-//     super.initState();
-//     _setCurrentLocation();
-//   }
+  final TextEditingController _pickupController = TextEditingController();
+  final TextEditingController _dropController = TextEditingController();
 
-//   Future<void> _setCurrentLocation() async {
-//     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-//     if (!serviceEnabled) return;
+  final PlacesService placesService = PlacesService(
+    "AIzaSyBiliqjmbfaoeuu4w_pvKDtp-Gff_AUyiU",
+  );
 
-//     LocationPermission permission = await Geolocator.checkPermission();
-//     if (permission == LocationPermission.denied ||
-//         permission == LocationPermission.deniedForever) {
-//       permission = await Geolocator.requestPermission();
-//       if (permission == LocationPermission.denied ||
-//           permission == LocationPermission.deniedForever)
-//         return;
-//     }
+  void _showLocationInputSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: MediaQuery.of(context).viewInsets,
+          child: Container(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Enter Your Trip Details',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                _buildAutoCompleteField(
+                  label: "Pickup Location",
+                  controller: _pickupController,
+                  onLocationSelected: (latLng, pincode) {
+                    ref
+                        .read(locationProvider.notifier)
+                        .updatePickupLocation(latLng, pincode!);
+                  },
+                ),
+                SizedBox(height: 10),
+                _buildAutoCompleteField(
+                  label: "Destination",
+                  controller: _dropController,
+                  onLocationSelected: (latLng, pincode) {
+                    ref
+                        .read(locationProvider.notifier)
+                        .updateDropLocation(latLng, pincode!);
+                  },
+                ),
+                const SizedBox(height: 24),
+                greenButton('Confirm', () {
+                  final loc = ref.read(locationProvider);
+                  final user = ref.read(userNotifierProvider);
 
-//     Position position = await Geolocator.getCurrentPosition();
-//     currentLatLng = LatLng(position.latitude, position.longitude);
+                  print("Pickup: ${loc.pickupLatLng}, ${loc.pickupPincode}");
+                  print("Drop: ${loc.dropLatLng}, ${loc.dropPincode}");
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => SearchingDriverScreen(
+                            pickupAddress: _pickupController.text,
+                            dropAddress: _dropController.text,
+                            user: user,
+                          ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-//     setState(() {
-//       _initialCameraPosition = currentLatLng!;
-//       _markers.add(
-//         Marker(
-//           markerId: const MarkerId('current_location'),
-//           position: currentLatLng!,
-//           infoWindow: const InfoWindow(title: 'You are here'),
-//           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-//         ),
-//       );
-//       _circles.add(
-//         Circle(
-//           circleId: const CircleId('driver_radius'),
-//           center: _driverHub,
-//           radius: 5000, // Radius in meters (5 km)
-//           fillColor: Colors.blue.withOpacity(0.1),
-//           strokeColor: Colors.blueAccent,
-//           strokeWidth: 2,
-//         ),
-//       );
-//     });
+  @override
+  void initState() {
+    super.initState();
+    _liveLocation();
+  }
 
-//     _addUserMarkers();
-//     _fitAllMarkers();
-//   }
+  Future<void> _showAvailableDrivers(SocketService socketService) async {
+    BitmapDescriptor customIcon = await BitmapDescriptor.asset(
+      ImageConfiguration(size: Size(48, 48)),
+      'assets/images/rider-marker.png',
+    );
+    socketService.connectAndSubscribe();
+    socketService.getNearByDriversStream().listen((availableDrivers) {
+      _markers.clear();
+      for (var user in availableDrivers) {
+        double lat =
+            user['lat'] is String ? double.parse(user['lat']) : user['lat'];
+        double lng =
+            user['lng'] is String ? double.parse(user['lng']) : user['lng'];
+        setState(() {
+          _markers.add(
+            Marker(
+              markerId: MarkerId(user['id'].toString()),
+              position: LatLng(lat, lng),
+              icon: customIcon,
+            ),
+          );
+        });
+      }
+    });
+  }
 
-//   void _addUserMarkers() {
-//     for (var user in _staticUsers) {
-//       _markers.add(
-//         Marker(
-//           markerId: MarkerId(user['id']),
-//           position: LatLng(user['lat'], user['lng']),
-//           infoWindow: InfoWindow(title: user['name']),
-//           icon: BitmapDescriptor.defaultMarkerWithHue(user['color']),
-//         ),
-//       );
-//     }
-//     setState(() {});
-//   }
+  Future<void> _liveLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
 
-//   void _fitAllMarkers() {
-//     if (_markers.isEmpty) return;
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever)
+        return;
+    }
 
-//     LatLngBounds bounds;
-//     var positions = _markers.map((m) => m.position).toList();
+    LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+    );
+    Position position = await Geolocator.getCurrentPosition();
 
-//     double x0 = positions
-//         .map((p) => p.latitude)
-//         .reduce((a, b) => a < b ? a : b);
-//     double x1 = positions
-//         .map((p) => p.latitude)
-//         .reduce((a, b) => a > b ? a : b);
-//     double y0 = positions
-//         .map((p) => p.longitude)
-//         .reduce((a, b) => a < b ? a : b);
-//     double y1 = positions
-//         .map((p) => p.longitude)
-//         .reduce((a, b) => a > b ? a : b);
+    positionStream = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) async {
+      LatLng currPosition = LatLng(position.latitude, position.longitude);
+      setState(() {
+        currentLatLng = currPosition;
+        _initialCameraPosition = currPosition;
+      });
 
-//     bounds = LatLngBounds(southwest: LatLng(x0, y0), northeast: LatLng(x1, y1));
+      Placemark place = await _getPlaceFromCoordinates();
+      // _pickupController.text =
+      //     "\${place.name}, \${place.locality}, \${place.postalCode}";
 
-//     _mapController.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
-//   }
+      socketService.connectAndSubscribe();
+      final userNotifier = ref.watch(userNotifierProvider.notifier);
+      final userState = ref.watch(userNotifierProvider);
+      Coordinates coordinates = Coordinates(
+        lat: currentLatLng!.latitude,
+        lan: currentLatLng!.longitude,
+      );
+      userNotifier.updateCoordinates(coordinates);
+      userNotifier.updateUserId(userState.id);
+      socketService.sendUsersLocation(
+        userID: userState.id,
+        pincode: place.postalCode!,
+        lat: currentLatLng!.latitude,
+        lng: currentLatLng!.longitude,
+      );
+      _showAvailableDrivers(socketService);
+    });
+  }
 
-//   int selectedIndex = 0;
+  Future<Placemark> _getPlaceFromCoordinates() async {
+    List<Placemark> placemarks = await placemarkFromCoordinates(
+      currentLatLng!.latitude,
+      currentLatLng!.longitude,
+    );
+    return placemarks[0];
+  }
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return GestureDetector(
-//       onTap: () => FocusScope.of(context).unfocus(),
-//       child: Scaffold(
-//         key: _scaffoldKey,
-//         resizeToAvoidBottomInset: false,
-//         drawer: _buildProfileDrawer(),
-//         body: Stack(
-//           children: [
-//             Positioned.fill(
-//               child: GoogleMap(
-//                 onMapCreated: _onMapCreated,
-//                 initialCameraPosition: CameraPosition(
-//                   target: _initialCameraPosition,
-//                   zoom: 1,
-//                 ),
-//                 myLocationEnabled: true,
-//                 myLocationButtonEnabled: true,
-//                 zoomControlsEnabled: true,
-//                 markers: _markers,
-//                 circles: _circles,
-//               ),
-//             ),
-//             SafeArea(
-//               child: Padding(
-//                 padding: const EdgeInsets.all(10),
-//                 child: Align(
-//                   alignment: Alignment.topLeft,
-//                   child: IconButton(
-//                     iconSize: 40,
-//                     icon: Icon(Icons.menu, size: 30, color: Colors.black),
-//                     onPressed: () {
-//                       _scaffoldKey.currentState!.openDrawer();
-//                     },
-//                   ),
-//                 ),
-//               ),
-//             ),
-//             SafeArea(
-//               child: Padding(
-//                 padding: const EdgeInsets.all(10),
-//                 child: Align(
-//                   alignment: Alignment.topCenter,
-//                   child: Row(
-//                     mainAxisSize: MainAxisSize.min,
-//                     children: [
-//                       Switch(
-//                         value: _isOnline,
-//                         onChanged: (value) async {
-//                           if (value) {
-//                             final confirmed = await showDialog<bool>(
-//                               context: context,
-//                               builder:
-//                                   (context) => AlertDialog(
-//                                     title: const Text('Start Earning?'),
-//                                     content: const Text(
-//                                       'Do you want to go online and start earning?',
-//                                     ),
-//                                     actions: [
-//                                       TextButton(
-//                                         onPressed:
-//                                             () => Navigator.of(
-//                                               context,
-//                                             ).pop(false),
-//                                         child: const Text('Cancel'),
-//                                       ),
-//                                       TextButton(
-//                                         onPressed:
-//                                             () =>
-//                                                 Navigator.of(context).pop(true),
-//                                         child: const Text('Yes'),
-//                                       ),
-//                                     ],
-//                                   ),
-//                             );
+  void _onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+  }
 
-//                             if (confirmed == true) {
-//                               setState(() {
-//                                 _isOnline = true;
-//                               });
-//                               AlertBox.showSnackBar(
-//                                 context,
-//                                 'Online: ${currentLatLng?.latitude}, ${currentLatLng?.longitude}',
-//                               );
-//                             }
-//                           } else {
-//                             setState(() {
-//                               _isOnline = false;
-//                             });
-//                             AlertBox.showSnackBar(context, 'Offline');
-//                           }
-//                         },
-//                         activeColor: Colors.orangeAccent,
-//                         inactiveThumbColor: Colors.red,
-//                       ),
-//                     ],
-//                   ),
-//                 ),
-//               ),
-//             ),
-//           ],
-//         ),
-//         bottomNavigationBar: BottomNavigationBar(
-//           currentIndex: selectedIndex,
-//           onTap: (currentIndex) {},
-//           items: const [
-//             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-//             BottomNavigationBarItem(
-//               icon: Icon(Icons.car_rental),
-//               label: 'Trip',
-//             ),
-//             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
+  void _recenterMap() {
+    _mapController.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: _initialCameraPosition!, zoom: 18),
+      ),
+    );
+  }
 
-//   Widget _buildProfileDrawer() {
-//     return Drawer(
-//       child: ListView(
-//         padding: EdgeInsets.zero,
-//         children: [
-//           DrawerHeader(
-//             decoration: BoxDecoration(
-//               color: Colorpalette.bgPrimary,
-//               image: DecorationImage(
-//                 image: AssetImage('assets/images/background.jpg'),
-//                 fit: BoxFit.cover,
-//               ),
-//             ),
-//             child: Column(
-//               mainAxisAlignment: MainAxisAlignment.center,
-//               children: [
-//                 CircleAvatar(
-//                   radius: 40,
-//                   backgroundImage: NetworkImage(
-//                     'https://picsum.photos/seed/107/600',
-//                   ),
-//                 ),
-//                 SizedBox(height: 10),
-//                 Text(
-//                   'Kallol Dhar',
-//                   style: TextStyle(
-//                     fontSize: 18,
-//                     color: Colorpalette.txtPrimary,
-//                   ),
-//                 ),
-//                 SizedBox(height: 5),
-//                 RatingBar.builder(
-//                   onRatingUpdate: (newValue) {},
-//                   itemBuilder:
-//                       (context, _) => Icon(
-//                         Icons.star_rounded,
-//                         color: Color.fromARGB(255, 229, 222, 202),
-//                       ),
-//                   direction: Axis.horizontal,
-//                   initialRating: 3,
-//                   itemCount: 5,
-//                   itemSize: 30,
-//                   glowColor: Colors.red,
-//                 ),
-//               ],
-//             ),
-//           ),
-//           _buildDrawerItem(Icons.person, 'Personal Details', () {}),
-//           _buildDrawerItem(Icons.directions_car, 'Vehicle Details', () {}),
-//           _buildDrawerItem(Icons.info, 'About us', () {}),
-//           _buildDrawerItem(Icons.settings, 'Settings', () {}),
-//           _buildDrawerItem(
-//             Icons.logout,
-//             'Log out',
-//             () {},
-//             iconColor: Colors.red,
-//             textColor: Colors.red,
-//           ),
-//         ],
-//       ),
-//     );
-//   }
+  Widget _buildAutoCompleteField({
+    required String label,
+    required TextEditingController controller,
+    required void Function(LatLng latLng, String? pincode) onLocationSelected,
+  }) {
+    return TypeAheadField<PlaceSuggestion>(
+      suggestionsCallback: (pattern) async {
+        return await placesService.getAutocomplete(pattern);
+      },
+      itemBuilder: (context, suggestion) {
+        return ListTile(title: Text(suggestion.description));
+      },
+      onSelected: (suggestion) async {
+        final details = await placesService.getPlaceDetails(suggestion.placeId);
 
-//   Widget _buildDrawerItem(
-//     IconData icon,
-//     String title,
-//     VoidCallback onTap, {
-//     Color iconColor = Colors.black,
-//     Color textColor = Colors.black,
-//   }) {
-//     return Column(
-//       children: [
-//         ListTile(
-//           leading: Icon(icon, color: iconColor),
-//           title: Text(title, style: TextStyle(color: textColor)),
-//           trailing: Icon(Icons.arrow_forward_ios, size: 16),
-//           onTap: onTap,
-//         ),
-//         Divider(),
-//       ],
-//     );
-//   }
-// }
+        // if (label.toLowerCase().contains("pickup location")) {
+        //   _pickupController.text = details['description'];
+        // } else {
+        //   _dropController.text = details['description'];
+        // }
+        controller.text = details['description'];
+        onLocationSelected(
+          LatLng(details['lat'], details['lng']),
+          details['pincode'],
+        );
+      },
+      builder: (context, fieldController, focusNode) {
+        return TextField(
+          controller: fieldController,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            labelText: label,
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (value) {
+            controller.text = value;
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_initialCameraPosition == null) {
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    return Scaffold(
+      body: Stack(
+        children: [
+          Positioned(
+            top: 150,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _initialCameraPosition!,
+                zoom: 18,
+              ),
+              onMapCreated: _onMapCreated,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: true,
+              markers: _markers,
+              style: _mapStyle,
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.of(context).size.height * 0.9,
+            left: 10,
+            child: FloatingActionButton(
+              mini: true,
+              onPressed: _recenterMap,
+              child: Icon(Icons.my_location),
+            ),
+          ),
+          buildProfileTile(),
+          textFieldWidget(),
+        ],
+      ),
+    );
+  }
+
+  Widget textFieldWidget() {
+    return Positioned(
+      top: 170,
+      left: 20,
+      right: 20,
+      child: Container(
+        width: Get.width,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              spreadRadius: 1,
+              blurRadius: 1,
+            ),
+          ],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: TextFormField(
+          readOnly: true,
+          onTap: () => _showLocationInputSheet(context),
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xffA7A7A7),
+          ),
+          decoration: InputDecoration(
+            hintText: "Enter destination",
+            suffixIcon: Padding(
+              padding: const EdgeInsets.only(left: 20),
+              child: Icon(Icons.search, color: Colors.green),
+            ),
+            border: InputBorder.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+bool show = true;
+Widget buildProfileTile() {
+  return Positioned(
+    top: 0,
+    left: 0,
+    right: 0,
+    child:
+        show == false
+            ? Center(child: CircularProgressIndicator())
+            : Container(
+              width: Get.width,
+              height: Get.width * 0.5,
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              decoration: BoxDecoration(color: Colors.white70),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      image: DecorationImage(
+                        image: AssetImage('assets/images/logo.png'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: 'Good Morning, ',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 14,
+                              ),
+                            ),
+                            TextSpan(
+                              text: "Kallol Dhar",
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        "Where are you going?",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+  );
+}
+
+Widget greenButton(String title, Function onPressed) {
+  return MaterialButton(
+    minWidth: Get.width,
+    height: 50,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+    color: Colors.green,
+    onPressed: () => onPressed(),
+    child: Text(
+      title,
+      style: GoogleFonts.poppins(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+    ),
+  );
+}
