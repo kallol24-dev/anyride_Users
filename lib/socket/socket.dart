@@ -50,11 +50,35 @@ class SocketService {
     });
   }
 
+  void validateTripDetails({required String userID, required int bookingID}) {
+    socket.emit('live:trip', {'bookingId': bookingID, 'userId': userID});
+    
+  }
+
+  // void _updateTripDetails({required String userID, required int bookingID}) {
+  //   socket.on(
+  //     'trip:update:$bookingID',
+  //     (data) => {print('Nearby driver location:$data')},
+  //   );
+  // }
+
+  Stream<dynamic> getLiveTripUpdates({required int bookingID}) {
+    final controller = StreamController<dynamic>();
+
+    socket.on('trip:update:$bookingID', (dynamic data) {
+      print("Trip Updates : ${data}");
+      controller.add(data);
+    });
+
+    return controller.stream;
+  }
+
+
   Stream<dynamic> getNearByDriversStream() {
     final controller = StreamController<dynamic>();
 
     socket.on('drivers:nearby', (dynamic data) {
-      print("Nearby Drivers: ${data}");
+      print("current Nearby Drivers : ${data}");
       controller.add(data);
     });
 

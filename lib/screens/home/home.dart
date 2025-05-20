@@ -15,8 +15,11 @@ import 'package:flutter_typeahead/flutter_typeahead.dart';
 
 import '../../business/driver_provider.dart';
 import '../../business/locationState.dart';
+import '../../services/auth_service.dart';
 import '../../services/place_service.dart';
+import '../../services/trip_service.dart';
 import '../../socket/socket.dart';
+import '../../wigets/searchDriverDialog.dart';
 import '../drivers/search_drivers.dart';
 
 class HomeScreen2 extends ConsumerStatefulWidget {
@@ -85,23 +88,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen2> {
                   },
                 ),
                 const SizedBox(height: 24),
-                greenButton('Confirm', () {
+                greenButton('Confirm', () async {
                   final loc = ref.read(locationProvider);
-                  final user = ref.read(userNotifierProvider);
 
                   print("Pickup: ${loc.pickupLatLng}, ${loc.pickupPincode}");
                   print("Drop: ${loc.dropLatLng}, ${loc.dropPincode}");
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder:
-                          (_) => SearchingDriverScreen(
-                            pickupAddress: _pickupController.text,
-                            dropAddress: _dropController.text,
-                            user: user,
-                          ),
-                    ),
+                  // Step 1: Show loader
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(width: 16),
+                            Text("Searching for drivers..."),
+                          ],
+                        ),
+                      );
+                    },
                   );
+                  int bookingId = await _initTripRequest();
+                  late StreamSubscription tripSub;
+                  socketService.connectAndSubscribe();
+                  tripSub = socketService
+                      .getLiveTripUpdates(bookingID: bookingId)
+                      .listen((update) {
+                        print("Trip update received: $update");
+
+                        // Check if the driver has accepted the trip
+                        if (update['status'] == 'ACCEPTED') {
+                          // Close the loader
+                          Navigator.of(context).pop();
+
+                          // Stop listening
+                          tripSub.cancel();
+
+                          // Navigate or update map with driver info
+                          _showTrip(socketService);
+                        }
+                      });
                 }),
               ],
             ),
@@ -117,7 +144,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen2> {
     _liveLocation();
   }
 
+  Future<int> _initTripRequest() async {
+    final tripRequest = TripRequest();
+    final loc = ref.read(locationProvider);
+    AuthService authService = AuthService();
+    String? id = await authService.getUserId();
+    final userNotifier = ref.watch(userNotifierProvider.notifier);
+    userNotifier.updateUserId(id!);
+    final user = ref.read(userNotifierProvider);
+
+    try {
+      final response = await tripRequest.requestForTrip(loc, user);
+
+      if (response != null) {
+        print("Trip request successful: $response");
+
+        final user = ref.read(userNotifierProvider);
+        SocketService socketService = SocketService();
+        socketService.connectAndSubscribe();
+        socketService.validateTripDetails(
+          userID: user.id,
+          bookingID: response['bookingId'],
+        );
+        return response['bookingId'];
+
+        // Close the dialog and notify parent that a driver was found
+      } else {
+        print("Trip request failed or returned null");
+      }
+    } catch (e) {
+      print("Error during trip request: $e");
+    }
+    return 0;
+  }
+
   Future<void> _showAvailableDrivers(SocketService socketService) async {
+    BitmapDescriptor customIcon = await BitmapDescriptor.asset(
+      ImageConfiguration(size: Size(48, 48)),
+      'assets/images/rider-marker.png',
+    );
+    socketService.connectAndSubscribe();
+    socketService.getNearByDriversStream().listen((availableDrivers) {
+      _markers.clear();
+      for (var user in availableDrivers) {
+        double lat =
+            user['lat'] is String ? double.parse(user['lat']) : user['lat'];
+        double lng =
+            user['lng'] is String ? double.parse(user['lng']) : user['lng'];
+        setState(() {
+          _markers.add(
+            Marker(
+              markerId: MarkerId(user['id'].toString()),
+              position: LatLng(lat, lng),
+              icon: customIcon,
+            ),
+          );
+        });
+      }
+    });
+  }
+
+  Future<void> _showTrip(SocketService socketService) async {
     BitmapDescriptor customIcon = await BitmapDescriptor.asset(
       ImageConfiguration(size: Size(48, 48)),
       'assets/images/rider-marker.png',

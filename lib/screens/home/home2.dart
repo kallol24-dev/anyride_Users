@@ -668,6 +668,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       accuracy: LocationAccuracy.high,
     );
     Position position = await Geolocator.getCurrentPosition();
+    socketService.connectAndSubscribe();
+      var driver = ref.watch(driverNotifierProvider);
 
     positionStream = Geolocator.getPositionStream(
       locationSettings: locationSettings,
@@ -682,8 +684,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _pickupController.text =
           "${place.name}, ${place.locality}, ${place.postalCode}";
 
-      socketService.connectAndSubscribe();
-      var driver = ref.watch(driverNotifierProvider);
+      
       socketService.sendUsersLocation(
         userID: driver.id,
         pincode: place.postalCode!,
